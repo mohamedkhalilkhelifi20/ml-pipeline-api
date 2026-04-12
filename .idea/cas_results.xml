@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="com.bridgecrew.services.ResultsService">
+    <option name="categories">
+      <map>
+        <entry key="IAC">
+          <value>
+            <list />
+          </value>
+        </entry>
+        <entry key="SCA">
+          <value>
+            <list />
+          </value>
+        </entry>
+        <entry key="SECRETS">
+          <value>
+            <list>
+              <option value="58606bea-b0b8-45e6-912a-be6a2d207242" />
+            </list>
+          </value>
+        </entry>
+        <entry key="LICENSES">
+          <value>
+            <list />
+          </value>
+        </entry>
+        <entry key="WEAKNESSES">
+          <value>
+            <list />
+          </value>
+        </entry>
+        <entry key="OSS">
+          <value>
+            <list />
+          </value>
+        </entry>
+        <entry key="UNCATEGORIZED">
+          <value>
+            <list />
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="files">
+      <map>
+        <entry key="C:\Users\HP-PC\Desktop\GL\G2\s2\ia\Projet_ML\frontend\.next\dev\server\chunks\ssr\node_modules_129xt72._.js">
+          <value>
+            <list>
+              <option value="58606bea-b0b8-45e6-912a-be6a2d207242" />
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="results">
+      <map>
+        <entry key="58606bea-b0b8-45e6-912a-be6a2d207242">
+          <value>
+            <ScanResult>
+              <option name="codeAnnotation">
+                <map>
+                  <entry key="1252">
+                    <value>
+                      <ScanResultCodeAnnotation>
+                        <option name="row" value="1252" />
+                        <option name="text" value="const NEXT_CACHE_REVALIDATE_TAG_TOKEN_HEADER = 'x-next**********';" />
+                        <option name="displayType" value="INFO" />
+                      </ScanResultCodeAnnotation>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+              <option name="documentation" value="https://docs.prismacloud.io/en/enterprise-edition/policy-reference/secrets-policies/secrets-policy-index/git-secrets-6" />
+              <option name="originalResult" value="{&quot;check_id&quot;:&quot;CKV_SECRET_6&quot;,&quot;bc_check_id&quot;:&quot;BC_GIT_6&quot;,&quot;check_name&quot;:&quot;Base64 High Entropy String&quot;,&quot;code_block&quot;:[[1252,&quot;const NEXT_CACHE_REVALIDATE_TAG_TOKEN_HEADER = 'x-next**********';\n&quot;]],&quot;file_abs_path&quot;:&quot;C:\\Users\\HP-PC\\Desktop\\GL\\G2\\s2\\ia\\Projet_ML\\frontend\\.next\\dev\\server\\chunks\\ssr\\node_modules_129xt72._.js&quot;,&quot;repo_file_path&quot;:&quot;/frontend/.next/dev/server/chunks/ssr/node_modules_129xt72._.js&quot;,&quot;file_line_range&quot;:[1252,1253],&quot;guideline&quot;:&quot;https://docs.prismacloud.io/en/enterprise-edition/policy-reference/secrets-policies/secrets-policy-index/git-secrets-6&quot;,&quot;resource&quot;:&quot;4b8868162ad5b51b3a5723c7044001e352529112&quot;,&quot;description&quot;:null,&quot;short_description&quot;:null,&quot;validation_status&quot;:&quot;Unavailable&quot;,&quot;check_result&quot;:{&quot;evaluated_keys&quot;:null,&quot;inspected_key&quot;:&quot;&quot;}}" />
+              <option name="platformCheckId" value="BC_GIT_6" />
+              <option name="secretValidation" value="UNAVAILABLE" />
+              <option name="suppressible" value="true" />
+              <option name="id" value="58606bea-b0b8-45e6-912a-be6a2d207242" />
+              <option name="category" value="SECRETS" />
+              <option name="framework" value="SECRETS" />
+              <option name="checkId" value="CKV_SECRET_6" />
+              <option name="checkName" value="Base64 High Entropy String" />
+              <option name="resultName" value="Base64 High Entropy String" />
+              <option name="popupTitle" value="Base64 High Entropy String" />
+              <option name="resource" value="4b8868162ad5b51b3a5723c7044001e352529112" />
+              <option name="lineRange">
+                <Range>
+                  <option name="end" value="1253" />
+                  <option name="start" value="1252" />
+                </Range>
+              </option>
+              <option name="fileDetails">
+                <ScanResultFileDetails>
+                  <option name="absolutePath" value="C:\Users\HP-PC\Desktop\GL\G2\s2\ia\Projet_ML\frontend\.next\dev\server\chunks\ssr\node_modules_129xt72._.js" />
+                  <option name="relativePath" value="\C:\Users\HP-PC\Desktop\GL\G2\s2\ia\Projet_ML\frontend\.next\dev\server\chunks\ssr\node_modules_129xt72._.js" />
+                  <option name="fileName" value="node_modules_129xt72._.js" />
+                  <option name="extension" value=".js" />
+                </ScanResultFileDetails>
+              </option>
+            </ScanResult>
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="summary">
+      <ScanSummary>
+        <option name="failed" value="1" />
+      </ScanSummary>
+    </option>
+  </component>
+</project>
