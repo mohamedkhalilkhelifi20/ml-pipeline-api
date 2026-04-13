@@ -11,13 +11,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
-    allow_methods=["POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(axe1.router)
