@@ -5,7 +5,7 @@
 
 from datetime import datetime, timezone
 from typing import Any, Optional
-from beanie import Document, Indexed
+from beanie import Document, PydanticObjectId
 from pydantic import Field
 
 
@@ -16,29 +16,29 @@ class RapportDocument(Document):
     """
 
     # ── Identification ────────────────────────────────────────────────────────
-    axe: int                          # 1, 2 ou 3
-    patient_nom: str                  # nom saisi par le médecin
-    patient_prenom: str               # prénom
+    axe:            int
+    patient_nom:    str
+    patient_prenom: str
 
-    # ── Données cliniques brutes (variables selon l'axe) ─────────────────────
-    patient_data: dict[str, Any]      # features brutes du formulaire wizard
+    # ── Relations (optionnelles pour compatibilité ascendante) ────────────────
+    client_id:  Optional[PydanticObjectId] = None   # Lien vers ClientDocument
+    doctor_id:  Optional[PydanticObjectId] = None   # Médecin ayant généré le rapport
 
-    # ── Résultat du modèle ML ────────────────────────────────────────────────
-    prediction: dict[str, Any]        # probabilité, verdict, threshold...
+    # ── Données cliniques brutes ──────────────────────────────────────────────
+    patient_data: dict[str, Any]
 
-    # ── Rapport IA généré ────────────────────────────────────────────────────
-    rapport_texte: str                # texte Markdown généré par phi3:mini
-    modele_llm: str = "phi3:mini"     # modèle utilisé
+    # ── Résultat ML ───────────────────────────────────────────────────────────
+    prediction: dict[str, Any]
+
+    # ── Rapport IA ────────────────────────────────────────────────────────────
+    rapport_texte: str
+    modele_llm:    str = "phi3:mini"
 
     # ── Métadonnées ───────────────────────────────────────────────────────────
-    created_at: datetime = Field(
+    medecin_nom: Optional[str] = None   # Conservé pour les anciens documents
+    created_at:  datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    medecin_nom: Optional[str] = None  # pour plus tard (auth)
 
     class Settings:
-        name = "rapports"             # nom de la collection MongoDB
-
-
-class Settings:
-    name = "rapports"
+        name = "rapports"

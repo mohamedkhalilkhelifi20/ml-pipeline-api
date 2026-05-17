@@ -1,16 +1,17 @@
 # =============================================================================
-# routers/history.py — Endpoints historique rapports
-# StrokeAI | GET/DELETE rapports sauvegardés
+# rapport/history.py — Historique rapports (avec filtre par médecin)
 #
-# Endpoints :
-#   GET  /history                          — liste tous les rapports
-#   GET  /history/{rapport_id}             — détail un rapport
-#   GET  /history/patient/{nom}/{prenom}   — rapports d'un patient
-#   DELETE /history/{rapport_id}           — supprimer un rapport
+# GET  /history                        — admin : tous les rapports
+# GET  /history/mine                   — médecin : ses propres rapports
+# GET  /history/{rapport_id}           — détail
+# GET  /history/patient/{nom}/{prenom} — rapports d'un patient
+# DELETE /history/{rapport_id}         — supprimer
 # =============================================================================
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
+from models.user_model import UserDocument, Role
+from auth.security import get_current_user, require_roles
 from services.history_service import (
     get_all_rapports,
     get_rapport_by_id,
@@ -20,48 +21,58 @@ from services.history_service import (
 
 router = APIRouter(prefix="/history", tags=["Historique"])
 
+_any_staff = require_roles(Role.DOCTOR, Role.SECRETARY, Role.ADMIN)
 
-# -----------------------------------------------------------------------------
-# GET /history — liste avec filtres optionnels
-# -----------------------------------------------------------------------------
+
+# ── Liste rapports ────────────────────────────────────────────────────────────
 
 @router.get("/")
 async def list_rapports(
-    axe:         Optional[int] = Query(None, description="Filtrer par axe (1, 2 ou 3)"),
-    patient_nom: Optional[str] = Query(None, description="Filtrer par nom patient"),
-    limit:       int           = Query(50,   description="Nombre max de résultats"),
+    axe:         Optional[int] = Query(None),
+    patient_nom: Optional[str] = Query(None),
+    limit:       int           = Query(50, le=200),
+    current: UserDocument = Depends(_any_staff),
 ):
-    """
-    Retourne la liste des rapports triés par date décroissante.
-    Exemples :
-      GET /history
-      GET /history?axe=1
-      GET /history?patient_nom=BEN+ALI
-      GET /history?axe=1&limit=10
-    """
-    rapports = await get_all_rapports(axe=axe, patient_nom=patient_nom, limit=limit)
-    return {
-        "total":   len(rapports),
-        "rapports": rapports,
-    }
+    # Le médecin ne voit que ses propres rapports ; admin voit tout
+    doctor_id = str(current.id) if current.role == Role.DOCTOR else None
+
+    rapports = await get_all_rapports(
+        axe=axe,
+        patient_nom=patient_nom,
+        limit=limit,
+        doctor_id=doctor_id,
+    )
+    return {"total": len(rapports), "rapports": rapports}
 
 
-# -----------------------------------------------------------------------------
-# GET /history/patient/{nom}/{prenom} — historique d'un patient
-# -----------------------------------------------------------------------------
+# ── Rapports du médecin connecté ──────────────────────────────────────────────
+
+@router.get("/mine")
+async def my_rapports(
+    limit: int = Query(50, le=200),
+    current: UserDocument = Depends(require_roles(Role.DOCTOR)),
+):
+    rapports = await get_all_rapports(doctor_id=str(current.id), limit=limit)
+    return {"total": len(rapports), "rapports": rapports}
+
+
+# ── Rapports d'un patient ─────────────────────────────────────────────────────
 
 @router.get("/patient/{patient_nom}/{patient_prenom}")
-async def rapports_patient(patient_nom: str, patient_prenom: str):
-    """
-    Retourne tous les rapports d'un patient (tous axes).
-    Exemple : GET /history/patient/BEN+ALI/Mohamed
-    """
+async def rapports_patient(
+    patient_nom: str,
+    patient_prenom: str,
+    current: UserDocument = Depends(_any_staff),
+):
     rapports = await get_rapports_by_patient(patient_nom, patient_prenom)
     if not rapports:
         raise HTTPException(
             status_code=404,
-            detail=f"Aucun rapport trouvé pour {patient_prenom} {patient_nom}",
+            detail=f"Aucun rapport pour {patient_prenom} {patient_nom}",
         )
+    # Médecin : filtre sur ses rapports uniquement
+    if current.role == Role.DOCTOR:
+        rapports = [r for r in rapports if r.get("doctor_id") == str(current.id)]
     return {
         "patient":  f"{patient_prenom} {patient_nom.upper()}",
         "total":    len(rapports),
@@ -69,33 +80,36 @@ async def rapports_patient(patient_nom: str, patient_prenom: str):
     }
 
 
-# -----------------------------------------------------------------------------
-# GET /history/{rapport_id} — détail complet
-# -----------------------------------------------------------------------------
+# ── Détail ────────────────────────────────────────────────────────────────────
 
 @router.get("/{rapport_id}")
-async def get_rapport(rapport_id: str):
-    """
-    Retourne un rapport complet par son ID MongoDB.
-    Exemple : GET /history/663f1a2b...
-    """
+async def get_rapport(
+    rapport_id: str,
+    current: UserDocument = Depends(_any_staff),
+):
     rapport = await get_rapport_by_id(rapport_id)
     if not rapport:
         raise HTTPException(status_code=404, detail="Rapport introuvable")
+
+    if current.role == Role.DOCTOR and rapport.get("doctor_id") != str(current.id):
+        raise HTTPException(status_code=403, detail="Ce rapport ne vous appartient pas")
+
     return rapport
 
 
-# -----------------------------------------------------------------------------
-# DELETE /history/{rapport_id} — suppression
-# -----------------------------------------------------------------------------
+# ── Suppression ───────────────────────────────────────────────────────────────
 
 @router.delete("/{rapport_id}")
-async def supprimer_rapport(rapport_id: str):
-    """
-    Supprime un rapport par ID.
-    Exemple : DELETE /history/663f1a2b...
-    """
-    deleted = await delete_rapport(rapport_id)
-    if not deleted:
+async def supprimer_rapport(
+    rapport_id: str,
+    current: UserDocument = Depends(require_roles(Role.DOCTOR, Role.ADMIN)),
+):
+    rapport = await get_rapport_by_id(rapport_id)
+    if not rapport:
         raise HTTPException(status_code=404, detail="Rapport introuvable")
+
+    if current.role == Role.DOCTOR and rapport.get("doctor_id") != str(current.id):
+        raise HTTPException(status_code=403, detail="Ce rapport ne vous appartient pas")
+
+    await delete_rapport(rapport_id)
     return {"message": "Rapport supprimé", "id": rapport_id}

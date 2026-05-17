@@ -1,19 +1,16 @@
 # =============================================================================
 # database.py — Connexion MongoDB + initialisation Beanie
-# À placer à la racine de backend/
 # =============================================================================
 
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
-from beanie import init_beanie
+from motor.motor_asyncio import AsyncIOMotorClient  # type: ignore
+from beanie import init_beanie  # type: ignore
 from models.rapport_model import RapportDocument
+from models.user_model import UserDocument
+from models.client_model import ClientDocument
 
 
 async def init_db():
-    """
-    Initialise la connexion MongoDB.
-    Appelée au démarrage de FastAPI via lifespan.
-    """
     mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     mongodb_db  = os.getenv("MONGODB_DB", "strokeai")
 
@@ -21,7 +18,11 @@ async def init_db():
 
     await init_beanie(
         database=client[mongodb_db],
-        document_models=[RapportDocument],
+        document_models=[
+            UserDocument,
+            ClientDocument,
+            RapportDocument,
+        ],
     )
 
-    print(f"✅ MongoDB connecté — base : {mongodb_db}")
+    print(f"[OK] MongoDB connecte - base : {mongodb_db}")

@@ -1,9 +1,7 @@
 # =============================================================================
-# rapport/rapport.py — Endpoints rapport IA + sauvegarde automatique MongoDB
-# StrokeAI — Streaming SSE pour les 3 axes
+# rapport/rapport.py — Endpoints rapport IA (rétro-compatibilité frontend)
 # =============================================================================
 
-import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,14 +11,10 @@ from services.rapport_service import (
     generer_rapport_axe2,
     generer_rapport_axe3,
 )
-from services.history_service import save_rapport
+from rapport.streaming import sse_stream_and_save, SSE_HEADERS
 
-router = APIRouter(prefix="/rapport", tags=["Rapport IA — phi3:mini"])
+router = APIRouter(prefix="/rapport", tags=["Rapport IA"])
 
-
-# -----------------------------------------------------------------------------
-# Schema d'entrée
-# -----------------------------------------------------------------------------
 
 class RapportRequest(BaseModel):
     patient:        dict[str, Any]
@@ -28,65 +22,29 @@ class RapportRequest(BaseModel):
     patient_nom:    Optional[str] = "Inconnu"
     patient_prenom: Optional[str] = "Inconnu"
     medecin_nom:    Optional[str] = None
+    client_id:      Optional[str] = None
+    doctor_id:      Optional[str] = None
 
 
-# -----------------------------------------------------------------------------
-# Helper SSE — encode chaque chunk en JSON pour éviter les problèmes de \n
-# -----------------------------------------------------------------------------
+def _sse_response(generator, axe: int, body: RapportRequest):
+    stream = sse_stream_and_save(
+        generator=generator,
+        axe=axe,
+        patient_nom=body.patient_nom or "Inconnu",
+        patient_prenom=body.patient_prenom or "Inconnu",
+        patient_data=body.patient,
+        prediction=body.prediction,
+        medecin_nom=body.medecin_nom,
+        client_id=body.client_id,
+        doctor_id=body.doctor_id,
+    )
+    return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
 
-async def _to_sse(generator, axe: int, body: RapportRequest):
-    """
-    Stream le rapport chunk par chunk en SSE.
-    Accumule le texte complet puis sauvegarde en MongoDB à la fin.
-    """
-    rapport_complet = ""
-    try:
-        async for chunk in generator:
-            rapport_complet += chunk
-            data = json.dumps({"text": chunk}, ensure_ascii=False)
-            yield f"data: {data}\n\n"
-
-        # ── Sauvegarde MongoDB après fin du stream ────────────────────────
-        try:
-            rapport_id = await save_rapport(
-                axe=axe,
-                patient_nom=body.patient_nom or "Inconnu",
-                patient_prenom=body.patient_prenom or "Inconnu",
-                patient_data=body.patient,
-                prediction=body.prediction,
-                rapport_texte=rapport_complet,
-                medecin_nom=body.medecin_nom,
-            )
-            # Envoie l'ID MongoDB au frontend
-            meta = json.dumps({"saved": True, "rapport_id": rapport_id}, ensure_ascii=False)
-            yield f"data: {meta}\n\n"
-        except Exception as e:
-            # Sauvegarde échouée — on log mais on ne bloque pas
-            print(f"⚠️ Sauvegarde MongoDB échouée : {e}")
-
-        yield "data: [DONE]\n\n"
-
-    except Exception as e:
-        yield f"data: [ERROR] {str(e)}\n\n"
-
-
-# -----------------------------------------------------------------------------
-# Endpoints
-# -----------------------------------------------------------------------------
 
 @router.post("/axe1")
 async def rapport_axe1(body: RapportRequest):
     try:
-        generator = generer_rapport_axe1(body.patient, body.prediction)
-        return StreamingResponse(
-            _to_sse(generator, axe=1, body=body),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "Connection": "keep-alive",
-            },
-        )
+        return _sse_response(generer_rapport_axe1(body.patient, body.prediction), 1, body)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -94,16 +52,7 @@ async def rapport_axe1(body: RapportRequest):
 @router.post("/axe2")
 async def rapport_axe2(body: RapportRequest):
     try:
-        generator = generer_rapport_axe2(body.patient, body.prediction)
-        return StreamingResponse(
-            _to_sse(generator, axe=2, body=body),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "Connection": "keep-alive",
-            },
-        )
+        return _sse_response(generer_rapport_axe2(body.patient, body.prediction), 2, body)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -111,15 +60,6 @@ async def rapport_axe2(body: RapportRequest):
 @router.post("/axe3")
 async def rapport_axe3(body: RapportRequest):
     try:
-        generator = generer_rapport_axe3(body.patient, body.prediction)
-        return StreamingResponse(
-            _to_sse(generator, axe=3, body=body),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "Connection": "keep-alive",
-            },
-        )
+        return _sse_response(generer_rapport_axe3(body.patient, body.prediction), 3, body)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

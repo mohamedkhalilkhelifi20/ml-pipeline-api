@@ -21,11 +21,15 @@ async def save_rapport(
     prediction: dict[str, Any],
     rapport_texte: str,
     medecin_nom: Optional[str] = None,
+    client_id: Optional[str] = None,
+    doctor_id: Optional[str] = None,
 ) -> str:
     """
     Sauvegarde un rapport généré dans MongoDB.
     Retourne l'ID du document créé.
     """
+    from beanie import PydanticObjectId
+
     doc = RapportDocument(
         axe=axe,
         patient_nom=patient_nom.strip().upper(),
@@ -34,6 +38,8 @@ async def save_rapport(
         prediction=prediction,
         rapport_texte=rapport_texte,
         medecin_nom=medecin_nom,
+        client_id=PydanticObjectId(client_id) if client_id else None,
+        doctor_id=PydanticObjectId(doctor_id) if doctor_id else None,
     )
     await doc.insert()
     return str(doc.id)
@@ -47,6 +53,7 @@ async def get_all_rapports(
     axe: Optional[int] = None,
     patient_nom: Optional[str] = None,
     limit: int = 50,
+    doctor_id: Optional[str] = None,
 ) -> list[dict]:
     """
     Récupère la liste des rapports, triés par date décroissante.
@@ -58,11 +65,11 @@ async def get_all_rapports(
         query["axe"] = axe
 
     if patient_nom:
-        # Recherche insensible à la casse
-        query["patient_nom"] = {
-            "$regex": patient_nom.strip().upper(),
-            "$options": "i"
-        }
+        query["patient_nom"] = {"$regex": patient_nom.strip().upper(), "$options": "i"}
+
+    if doctor_id:
+        from bson import ObjectId
+        query["doctor_id"] = ObjectId(doctor_id)
 
     rapports = await RapportDocument.find(query)\
         .sort(-RapportDocument.created_at)\
@@ -126,5 +133,7 @@ def _serialize(doc: RapportDocument) -> dict:
         "rapport_texte":  doc.rapport_texte,
         "modele_llm":     doc.modele_llm,
         "medecin_nom":    doc.medecin_nom,
+        "client_id":      str(doc.client_id) if doc.client_id else None,
+        "doctor_id":      str(doc.doctor_id) if doc.doctor_id else None,
         "created_at":     doc.created_at.isoformat(),
     }
