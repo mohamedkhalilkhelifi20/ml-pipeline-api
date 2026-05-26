@@ -17,8 +17,9 @@ from rapport.history import router as history_router
 from auth.routes import router as auth_router
 from users.routes import router as users_router
 from clients.routes import router as clients_router
-from secretary.routes import router as secretary_router
-from doctor.routes import router as doctor_router
+from secretary.routes   import router as secretary_router
+from doctor.routes      import router as doctor_router
+from rendezvous.routes  import router as rendezvous_router
 from database import init_db
 
 
@@ -60,6 +61,7 @@ app.include_router(users_router)
 app.include_router(clients_router)
 app.include_router(secretary_router)
 app.include_router(doctor_router)
+app.include_router(rendezvous_router)
 
 
 @app.get("/health", tags=["Santé"])

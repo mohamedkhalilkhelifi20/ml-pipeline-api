@@ -23,6 +23,7 @@ async def save_rapport(
     medecin_nom: Optional[str] = None,
     client_id: Optional[str] = None,
     doctor_id: Optional[str] = None,
+    modele_llm: Optional[str] = None,
 ) -> str:
     """
     Sauvegarde un rapport généré dans MongoDB.
@@ -40,6 +41,7 @@ async def save_rapport(
         medecin_nom=medecin_nom,
         client_id=PydanticObjectId(client_id) if client_id else None,
         doctor_id=PydanticObjectId(doctor_id) if doctor_id else None,
+        **({"modele_llm": modele_llm} if modele_llm else {}),
     )
     await doc.insert()
     return str(doc.id)
@@ -133,6 +135,17 @@ def _serialize(doc: RapportDocument) -> dict:
         "rapport_texte":  doc.rapport_texte,
         "modele_llm":     doc.modele_llm,
         "medecin_nom":    doc.medecin_nom,
+        "note_medecin":   doc.note_medecin,
+        "documents_lab":  [
+            {
+                "id":            d.id,
+                "original_name": d.original_name,
+                "content_type":  d.content_type,
+                "size":          d.size,
+                "uploaded_at":   d.uploaded_at,
+            }
+            for d in (doc.documents_lab or [])
+        ],
         "client_id":      str(doc.client_id) if doc.client_id else None,
         "doctor_id":      str(doc.doctor_id) if doc.doctor_id else None,
         "created_at":     doc.created_at.isoformat(),

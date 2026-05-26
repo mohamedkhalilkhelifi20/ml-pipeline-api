@@ -10,7 +10,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from models.user_model import UserDocument, Role
-from auth.schemas import DoctorRegisterRequest, TokenResponse, UserOut, ChangePasswordRequest
+from auth.schemas import DoctorRegisterRequest, TokenResponse, UserOut, ChangePasswordRequest, ProfileUpdateRequest
 from auth.security import (
     hash_password,
     verify_password,
@@ -87,6 +87,29 @@ async def change_password(
     user.hashed_password = hash_password(body.new_password)
     await user.save()
     return {"message": "Mot de passe mis à jour"}
+
+
+# ── Mettre à jour le profil ───────────────────────────────────────────────────
+
+@router.put("/profile", response_model=UserOut)
+async def update_profile(
+    body: ProfileUpdateRequest,
+    user: UserDocument = Depends(get_current_user),
+):
+    if body.full_name  is not None: user.full_name  = body.full_name.strip()
+    if body.telephone  is not None: user.telephone  = body.telephone.strip() or None
+    if body.adresse    is not None: user.adresse    = body.adresse.strip()   or None
+    if body.specialite is not None and user.role.value == "doctor":
+        user.specialite = body.specialite.strip() or None
+    if body.email is not None:
+        new_email = body.email.lower().strip()
+        if new_email != user.email:
+            conflict = await UserDocument.find_one(UserDocument.email == new_email)
+            if conflict:
+                raise HTTPException(status_code=400, detail="Cet email est déjà utilisé par un autre compte.")
+            user.email = new_email
+    await user.save()
+    return _serialize(user)
 
 
 # ── Sérializer ────────────────────────────────────────────────────────────────

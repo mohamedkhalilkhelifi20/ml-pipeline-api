@@ -1,26 +1,20 @@
 # =============================================================================
 # doctor/routes.py — Espace médecin
-#
-# Profil & secrétaire :
-#   GET    /doctor/me                          — profil + secrétaire + nb clients
-#   POST   /doctor/secretary                   — créer le compte secrétaire
-#   DELETE /doctor/secretary                   — désactiver la secrétaire
-#   PUT    /doctor/secretary                   — mettre à jour la secrétaire
-#
-# Clients :
-#   GET    /doctor/clients                     — liste patients
-#   GET    /doctor/clients/{id}                — détail patient
-#   GET    /doctor/clients/{id}/rapports       — rapports ML du patient
-#   POST   /doctor/clients/{id}/rapport/{axe} — générer rapport SSE
 # =============================================================================
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.responses import StreamingResponse
+import os
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Path
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
-from typing import Any, Literal
+from typing import Annotated, Any
 from beanie import PydanticObjectId
+
 from models.user_model import UserDocument, Role
 from models.client_model import ClientDocument
+from models.rapport_model import RapportDocument, LabDocument
 from auth.security import require_roles
 from auth.schemas import SecretaryCreateRequest, UserOut
 from auth.security import hash_password
@@ -30,18 +24,20 @@ from services.rapport_service import (
     generer_rapport_axe2,
     generer_rapport_axe3,
 )
-from rapport.streaming import sse_stream_and_save, SSE_HEADERS
+from rapport.streaming import sse_stream_and_save, sse_stream_and_update, SSE_HEADERS
 
 router = APIRouter(prefix="/doctor", tags=["Médecin"])
 
 _only_doctor = require_roles(Role.DOCTOR, Role.ADMIN)
 
-AxeNum = Literal[1, 2, 3]
+AxeNum = Annotated[int, Path(ge=1, le=3)]
 _generators = {
     1: generer_rapport_axe1,
     2: generer_rapport_axe2,
     3: generer_rapport_axe3,
 }
+
+UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
 
 
 # ── Helper : récupérer la secrétaire du médecin ───────────────────────────────
@@ -63,12 +59,12 @@ async def doctor_profile(current: UserDocument = Depends(_only_doctor)):
     ).count()
 
     return {
-        "id":           str(current.id),
-        "full_name":    current.full_name,
-        "email":        current.email,
-        "specialite":   current.specialite,
-        "nb_clients":   clients_count,
-        "secretary":    _sec_out(secretary),
+        "id":         str(current.id),
+        "full_name":  current.full_name,
+        "email":      current.email,
+        "specialite": current.specialite,
+        "nb_clients": clients_count,
+        "secretary":  _sec_out(secretary),
     }
 
 
@@ -79,7 +75,6 @@ async def create_secretary(
     body: SecretaryCreateRequest,
     current: UserDocument = Depends(_only_doctor),
 ):
-    """Le médecin crée le compte de sa secrétaire avec un mot de passe haché."""
     existing = await UserDocument.find_one(UserDocument.email == body.email)
     if existing:
         raise HTTPException(status_code=409, detail="Email déjà utilisé")
@@ -100,9 +95,9 @@ async def create_secretary(
 # ── Mettre à jour la secrétaire ───────────────────────────────────────────────
 
 class SecretaryUpdateRequest(BaseModel):
-    full_name:  str | None = None
-    telephone:  str | None = None
-    adresse:    str | None = None
+    full_name:    str | None = None
+    telephone:    str | None = None
+    adresse:      str | None = None
     new_password: str | None = None
 
 
@@ -115,9 +110,9 @@ async def update_secretary(
     if not secretary:
         raise HTTPException(status_code=404, detail="Aucune secrétaire assignée")
 
-    if body.full_name:  secretary.full_name = body.full_name.strip()
-    if body.telephone:  secretary.telephone = body.telephone
-    if body.adresse:    secretary.adresse   = body.adresse
+    if body.full_name:    secretary.full_name = body.full_name.strip()
+    if body.telephone:    secretary.telephone = body.telephone
+    if body.adresse:      secretary.adresse   = body.adresse
     if body.new_password:
         if len(body.new_password) < 8:
             raise HTTPException(status_code=422, detail="Mot de passe trop court (min 8 car.)")
@@ -127,7 +122,7 @@ async def update_secretary(
     return _user_out(secretary)
 
 
-# ── Désactiver la secrétaire ──────────────────────────────────────────────────
+# ── Désactiver / réactiver la secrétaire ──────────────────────────────────────
 
 @router.delete("/secretary", status_code=status.HTTP_200_OK)
 async def deactivate_secretary(current: UserDocument = Depends(_only_doctor)):
@@ -138,8 +133,6 @@ async def deactivate_secretary(current: UserDocument = Depends(_only_doctor)):
     await secretary.save()
     return {"message": "Compte secrétaire désactivé"}
 
-
-# ── Réactiver la secrétaire ───────────────────────────────────────────────────
 
 @router.post("/secretary/reactivate", status_code=status.HTTP_200_OK)
 async def reactivate_secretary(current: UserDocument = Depends(_only_doctor)):
@@ -175,7 +168,7 @@ async def client_rapports(client_id: str, current: UserDocument = Depends(_only_
     return {"total": len(rapports), "rapports": rapports}
 
 
-# ── Générer rapport SSE pour un client ───────────────────────────────────────
+# ── Générer rapport SSE ───────────────────────────────────────────────────────
 
 class RapportBody(BaseModel):
     patient:    dict[str, Any]
@@ -190,7 +183,7 @@ async def generate_rapport(
     current: UserDocument = Depends(_only_doctor),
 ):
     client = await _own_client(client_id, current)
-    gen = _generators[axe](body.patient, body.prediction)
+    gen    = _generators[axe](body.patient, body.prediction)
     stream = sse_stream_and_save(
         generator=gen,
         axe=axe,
@@ -205,6 +198,163 @@ async def generate_rapport(
     return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
 
 
+# ── Générer rapport IA pour un rapport ML existant ───────────────────────────
+
+@router.post("/rapports/{rapport_id}/generate-ia")
+async def generate_ia_for_rapport(
+    rapport_id: str,
+    current: UserDocument = Depends(_only_doctor),
+):
+    rapport = await _own_rapport(rapport_id, current)
+    axe: int = rapport.axe
+    gen = _generators[axe](rapport.patient_data, rapport.prediction)
+    stream = sse_stream_and_update(generator=gen, rapport_doc=rapport)
+    return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+# ── Note médecin ──────────────────────────────────────────────────────────────
+
+class NoteBody(BaseModel):
+    note: str
+
+
+@router.put("/rapports/{rapport_id}/note")
+async def update_note(
+    rapport_id: str,
+    body: NoteBody,
+    current: UserDocument = Depends(_only_doctor),
+):
+    rapport = await _own_rapport(rapport_id, current)
+    rapport.note_medecin = body.note.strip()
+    await rapport.save()
+    return {"message": "Note enregistrée", "note_medecin": rapport.note_medecin}
+
+
+# ── Modifier un rapport (note + texte IA) ─────────────────────────────────────
+
+class RapportUpdate(BaseModel):
+    note_medecin:  str | None            = None
+    rapport_texte: str | None            = None
+    patient_data:  dict[str, Any] | None = None
+    prediction:    dict[str, Any] | None = None
+
+
+@router.patch("/rapports/{rapport_id}")
+async def update_rapport(
+    rapport_id: str,
+    body: RapportUpdate,
+    current: UserDocument = Depends(_only_doctor),
+):
+    rapport = await _own_rapport(rapport_id, current)
+    if body.note_medecin  is not None: rapport.note_medecin  = body.note_medecin.strip()
+    if body.rapport_texte is not None: rapport.rapport_texte = body.rapport_texte
+    if body.patient_data  is not None: rapport.patient_data  = body.patient_data
+    if body.prediction    is not None: rapport.prediction    = body.prediction
+    await rapport.save()
+    return {"message": "Rapport mis à jour"}
+
+
+# ── Supprimer tous les rapports du médecin ───────────────────────────────────
+
+@router.delete("/rapports", status_code=status.HTTP_200_OK)
+async def delete_all_rapports(current: UserDocument = Depends(_only_doctor)):
+    """Supprime tous les rapports appartenant au médecin connecté."""
+    query = {} if current.role == Role.ADMIN else {"doctor_id": current.id}
+    rapports = await RapportDocument.find(query).to_list()
+
+    deleted = 0
+    for rapport in rapports:
+        # Supprimer les fichiers lab sur disque
+        client_dir = str(rapport.client_id) if rapport.client_id else "_no_client"
+        rapport_dir = os.path.join(UPLOADS_DIR, client_dir, str(rapport.id))
+        if os.path.isdir(rapport_dir):
+            import shutil
+            shutil.rmtree(rapport_dir, ignore_errors=True)
+        await rapport.delete()
+        deleted += 1
+
+    return {"message": f"{deleted} rapport(s) supprimé(s)", "deleted": deleted}
+
+
+# ── Documents laboratoire ─────────────────────────────────────────────────────
+
+@router.post("/rapports/{rapport_id}/lab", status_code=status.HTTP_201_CREATED)
+async def upload_lab_doc(
+    rapport_id: str,
+    file: UploadFile = File(...),
+    current: UserDocument = Depends(_only_doctor),
+):
+    rapport = await _own_rapport(rapport_id, current)
+
+    content = await file.read()
+    file_id     = str(uuid.uuid4())
+    client_dir  = str(rapport.client_id) if rapport.client_id else "_no_client"
+    dest_dir    = os.path.join(UPLOADS_DIR, client_dir, rapport_id)
+    os.makedirs(dest_dir, exist_ok=True)
+
+    dest_path = os.path.join(dest_dir, file_id)
+    with open(dest_path, "wb") as f:
+        f.write(content)
+
+    lab_doc = LabDocument(
+        id=file_id,
+        original_name=file.filename or "document",
+        content_type=file.content_type or "application/octet-stream",
+        size=len(content),
+        uploaded_at=datetime.now(timezone.utc).isoformat(),
+    )
+    rapport.documents_lab.append(lab_doc)
+    await rapport.save()
+
+    return lab_doc.model_dump()
+
+
+@router.get("/rapports/{rapport_id}/lab/{file_id}")
+async def download_lab_doc(
+    rapport_id: str,
+    file_id: str,
+    current: UserDocument = Depends(_only_doctor),
+):
+    rapport = await _own_rapport(rapport_id, current)
+
+    lab_doc = next((d for d in rapport.documents_lab if d.id == file_id), None)
+    if not lab_doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
+    client_dir = str(rapport.client_id) if rapport.client_id else "_no_client"
+    file_path  = os.path.join(UPLOADS_DIR, client_dir, rapport_id, file_id)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Fichier introuvable sur le serveur")
+
+    return FileResponse(
+        path=file_path,
+        media_type=lab_doc.content_type,
+        filename=lab_doc.original_name,
+    )
+
+
+@router.delete("/rapports/{rapport_id}/lab/{file_id}")
+async def delete_lab_doc(
+    rapport_id: str,
+    file_id: str,
+    current: UserDocument = Depends(_only_doctor),
+):
+    rapport = await _own_rapport(rapport_id, current)
+
+    lab_doc = next((d for d in rapport.documents_lab if d.id == file_id), None)
+    if not lab_doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
+    client_dir = str(rapport.client_id) if rapport.client_id else "_no_client"
+    file_path  = os.path.join(UPLOADS_DIR, client_dir, rapport_id, file_id)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    rapport.documents_lab = [d for d in rapport.documents_lab if d.id != file_id]
+    await rapport.save()
+    return {"message": "Document supprimé"}
+
+
 # ── Helpers privés ────────────────────────────────────────────────────────────
 
 async def _own_client(client_id: str, doctor: UserDocument) -> ClientDocument:
@@ -214,6 +364,18 @@ async def _own_client(client_id: str, doctor: UserDocument) -> ClientDocument:
     if doctor.role == Role.DOCTOR and client.doctor_id != doctor.id:
         raise HTTPException(status_code=403, detail="Ce client ne vous appartient pas")
     return client
+
+
+async def _own_rapport(rapport_id: str, doctor: UserDocument) -> RapportDocument:
+    try:
+        rapport = await RapportDocument.get(PydanticObjectId(rapport_id))
+    except Exception:
+        rapport = None
+    if not rapport:
+        raise HTTPException(status_code=404, detail="Rapport introuvable")
+    if doctor.role == Role.DOCTOR and rapport.doctor_id != doctor.id:
+        raise HTTPException(status_code=403, detail="Ce rapport ne vous appartient pas")
+    return rapport
 
 
 def _sec_out(sec: UserDocument | None) -> dict | None:

@@ -82,3 +82,16 @@ class ChangePasswordRequest(BaseModel):
         if len(v) < 8:
             raise ValueError("Minimum 8 caractères")
         return v
+
+
+class ProfileUpdateRequest(BaseModel):
+    full_name:  Optional[str] = None
+    email:      Optional[str] = None
+    telephone:  Optional[str] = None
+    adresse:    Optional[str] = None
+    specialite: Optional[str] = None  # médecin uniquement
+
+    @field_validator("email")
+    @classmethod
+    def email_normalize(cls, v: Optional[str]) -> Optional[str]:
+        return v.lower().strip() if v else v

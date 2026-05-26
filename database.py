@@ -5,9 +5,10 @@
 import os
 from motor.motor_asyncio import AsyncIOMotorClient  # type: ignore
 from beanie import init_beanie  # type: ignore
-from models.rapport_model import RapportDocument
-from models.user_model import UserDocument
-from models.client_model import ClientDocument
+from models.rapport_model     import RapportDocument
+from models.user_model        import UserDocument
+from models.client_model      import ClientDocument
+from models.rendezvous_model  import RendezVousDocument
 
 
 async def init_db():
@@ -22,6 +23,7 @@ async def init_db():
             UserDocument,
             ClientDocument,
             RapportDocument,
+            RendezVousDocument,
         ],
     )
 

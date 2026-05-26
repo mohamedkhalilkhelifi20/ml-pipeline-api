@@ -3,9 +3,12 @@
 # Utilisé par rapport/rapport.py et doctor/routes.py
 # =============================================================================
 
+import os
 import json
 from typing import Any, AsyncGenerator
 from services.history_service import save_rapport
+
+_MODELE_LLM = os.getenv("OPENROUTER_MODEL", "gemini-2.0-flash-001")
 
 
 async def sse_stream_and_save(
@@ -42,12 +45,38 @@ async def sse_stream_and_save(
                 medecin_nom=medecin_nom,
                 client_id=client_id,
                 doctor_id=doctor_id,
+                modele_llm=_MODELE_LLM,
             )
             meta = json.dumps({"saved": True, "rapport_id": rapport_id}, ensure_ascii=False)
             yield f"data: {meta}\n\n"
         except Exception as e:
             print(f"⚠️ Sauvegarde MongoDB échouée : {e}")
 
+        yield "data: [DONE]\n\n"
+
+    except Exception as e:
+        yield f"data: [ERROR] {str(e)}\n\n"
+
+
+async def sse_stream_and_update(
+    generator: AsyncGenerator[str, None],
+    rapport_doc,          # RapportDocument instance
+):
+    """
+    Génère le texte IA chunk-par-chunk, met à jour rapport_texte du document
+    existant en MongoDB quand la génération est terminée.
+    """
+    texte = ""
+    try:
+        async for chunk in generator:
+            texte += chunk
+            yield f"data: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+
+        rapport_doc.rapport_texte = texte
+        await rapport_doc.save()
+
+        meta = json.dumps({"saved": True, "rapport_id": str(rapport_doc.id)}, ensure_ascii=False)
+        yield f"data: {meta}\n\n"
         yield "data: [DONE]\n\n"
 
     except Exception as e:

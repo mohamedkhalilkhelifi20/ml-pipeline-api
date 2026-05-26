@@ -1,5 +1,5 @@
 # =============================================================================
-# models/client_model.py — Patient/Client lié à un médecin
+# models/client_model.py — Patient lié à un médecin
 # =============================================================================
 
 from datetime import datetime, timezone
@@ -9,18 +9,21 @@ from pydantic import Field
 
 
 class ClientDocument(Document):
+    # ── Numéro dossier unique ─────────────────────────────────────────────────
+    numero_dossier: str                   # ex: PAT-202505-A3F1
+
     # ── Identité ──────────────────────────────────────────────────────────────
-    nom:              str
-    prenom:           str
-    date_naissance:   Optional[str] = None   # "YYYY-MM-DD"
-    sexe:             Optional[str] = None   # "M" | "F"
-    telephone:        Optional[str] = None
-    adresse:          Optional[str] = None
-    notes:            Optional[str] = None
+    nom:            str
+    prenom:         str
+    full_name:      str                   # "{prenom} {nom}" — champ de recherche/affichage
+    date_naissance: Optional[str] = None  # "YYYY-MM-DD"
+    sexe:           Optional[str] = None  # "M" | "F"
+    telephone:      Optional[str] = None
+    adresse:        Optional[str] = None
 
     # ── Relations ─────────────────────────────────────────────────────────────
-    doctor_id:    PydanticObjectId   # Médecin assigné
-    secretary_id: PydanticObjectId   # Secrétaire créatrice
+    doctor_id:    PydanticObjectId
+    secretary_id: PydanticObjectId
 
     # ── Métadonnées ───────────────────────────────────────────────────────────
     created_at: datetime = Field(
